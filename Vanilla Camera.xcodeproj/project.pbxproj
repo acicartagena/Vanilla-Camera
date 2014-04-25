@@ -21,6 +21,8 @@
 		55A3264A190A6AF500165AB2 /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 55A3262C190A6AF500165AB2 /* UIKit.framework */; };
 		55A32652190A6AF500165AB2 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 55A32650190A6AF500165AB2 /* InfoPlist.strings */; };
 		55A32654190A6AF500165AB2 /* Vanilla_CameraTests.m in Sources */ = {isa = PBXBuildFile; fileRef = 55A32653190A6AF500165AB2 /* Vanilla_CameraTests.m */; };
+		55A3265F190A707D00165AB2 /* VanillaCameraProcessor.m in Sources */ = {isa = PBXBuildFile; fileRef = 55A3265E190A707D00165AB2 /* VanillaCameraProcessor.m */; };
+		55A32661190A713F00165AB2 /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 55A32660190A713F00165AB2 /* AVFoundation.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -53,6 +55,9 @@
 		55A3264F190A6AF500165AB2 /* Vanilla CameraTests-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Vanilla CameraTests-Info.plist"; sourceTree = "<group>"; };
 		55A32651190A6AF500165AB2 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		55A32653190A6AF500165AB2 /* Vanilla_CameraTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = Vanilla_CameraTests.m; sourceTree = "<group>"; };
+		55A3265D190A707D00165AB2 /* VanillaCameraProcessor.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VanillaCameraProcessor.h; sourceTree = "<group>"; };
+		55A3265E190A707D00165AB2 /* VanillaCameraProcessor.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = VanillaCameraProcessor.m; sourceTree = "<group>"; };
+		55A32660190A713F00165AB2 /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFoundation.framework; path = System/Library/Frameworks/AVFoundation.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -60,6 +65,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				55A32661190A713F00165AB2 /* AVFoundation.framework in Frameworks */,
 				55A3262B190A6AF500165AB2 /* CoreGraphics.framework in Frameworks */,
 				55A3262D190A6AF500165AB2 /* UIKit.framework in Frameworks */,
 				55A32629190A6AF500165AB2 /* Foundation.framework in Frameworks */,
@@ -101,6 +107,7 @@
 		55A32627190A6AF500165AB2 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				55A32660190A713F00165AB2 /* AVFoundation.framework */,
 				55A32628190A6AF500165AB2 /* Foundation.framework */,
 				55A3262A190A6AF500165AB2 /* CoreGraphics.framework */,
 				55A3262C190A6AF500165AB2 /* UIKit.framework */,
@@ -117,6 +124,8 @@
 				55A3263A190A6AF500165AB2 /* Main.storyboard */,
 				55A3263D190A6AF500165AB2 /* ViewController.h */,
 				55A3263E190A6AF500165AB2 /* ViewController.m */,
+				55A3265D190A707D00165AB2 /* VanillaCameraProcessor.h */,
+				55A3265E190A707D00165AB2 /* VanillaCameraProcessor.m */,
 				55A32640190A6AF500165AB2 /* Images.xcassets */,
 				55A3262F190A6AF500165AB2 /* Supporting Files */,
 			);
@@ -251,6 +260,7 @@
 				55A3263F190A6AF500165AB2 /* ViewController.m in Sources */,
 				55A32639190A6AF500165AB2 /* AppDelegate.m in Sources */,
 				55A32635190A6AF500165AB2 /* main.m in Sources */,
+				55A3265F190A707D00165AB2 /* VanillaCameraProcessor.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -378,6 +388,7 @@
 				GCC_PRECOMPILE_PREFIX_HEADER = YES;
 				GCC_PREFIX_HEADER = "Vanilla Camera/Vanilla Camera-Prefix.pch";
 				INFOPLIST_FILE = "Vanilla Camera/Vanilla Camera-Info.plist";
+				IPHONEOS_DEPLOYMENT_TARGET = 7.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				WRAPPER_EXTENSION = app;
 			};
@@ -391,6 +402,7 @@
 				GCC_PRECOMPILE_PREFIX_HEADER = YES;
 				GCC_PREFIX_HEADER = "Vanilla Camera/Vanilla Camera-Prefix.pch";
 				INFOPLIST_FILE = "Vanilla Camera/Vanilla Camera-Info.plist";
+				IPHONEOS_DEPLOYMENT_TARGET = 7.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				WRAPPER_EXTENSION = app;
 			};
