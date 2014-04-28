@@ -10,6 +10,7 @@
 
 #import <AVFoundation/AVFoundation.h>
 #import <AssetsLibrary/AssetsLibrary.h>
+#import <MobileCoreServices/MobileCoreServices.h>
 
 @protocol VanillaCameraProcessorDelegate <NSObject>
 @optional

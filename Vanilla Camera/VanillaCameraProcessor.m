@@ -8,17 +8,23 @@
 
 #import "VanillaCameraProcessor.h"
 
-
-#define OUTPUT VIDEODATA
+//OUTPUT MODE
+//#define MOVIE
+#define VIDEODATA
 
 @interface VanillaCameraProcessor ()
 
 @property (strong, nonatomic) AVCaptureDeviceInput *videoInput;
 @property (strong, nonatomic) AVCaptureDeviceInput *audioInput;
+
 @property (strong, nonatomic) AVCaptureVideoDataOutput *videoOutput;
+@property (strong, nonatomic) AVCaptureConnection *videoConnection;
+
 @property (strong, nonatomic) AVCaptureMovieFileOutput *movieOutput;
+@property (strong, nonatomic) AVAssetWriter *assetWriter;
 
 @property (nonatomic) dispatch_queue_t sessionQueue;
+@property (nonatomic) dispatch_queue_t writerQueue;
 
 
 @end
@@ -39,6 +45,7 @@
 {
     if (!_session){
         _session = [[AVCaptureSession alloc] init];
+        self.sessionQueue = dispatch_queue_create("setup session queue", DISPATCH_QUEUE_SERIAL);
     }
     return _session;
 }
@@ -74,6 +81,7 @@
         [_videoOutput setSampleBufferDelegate:self queue:queue];
         
         [_videoOutput setVideoSettings:@{(NSString *)kCVPixelBufferPixelFormatTypeKey:@(kCVPixelFormatType_32BGRA)}];
+        self.videoConnection = [_videoOutput connectionWithMediaType:AVMediaTypeVideo];
     }
     return _videoOutput;
 }
@@ -86,10 +94,26 @@
     return _movieOutput;
 }
 
+- (AVAssetWriter *)assetWriter
+{
+    if (!_assetWriter){
+        NSDictionary *videoCompressionSettings = @{AVVideoCodecKey: AVVideoCodecH264,
+                                                   AVVideoCompressionPropertiesKey: @{AVVideoAverageBitRateKey:@(11.4),     AVVideoMaxKeyFrameIntervalKey: @(30)}};
+        NSError *error;
+        NSString *outputFilePath = [NSTemporaryDirectory() stringByAppendingPathComponent:[[NSString stringWithFormat:@"%@",[NSDate date]]stringByAppendingPathExtension:@"mov"]];
+		_assetWriter = [[AVAssetWriter alloc] initWithURL:[NSURL URLWithString:outputFilePath] fileType:(NSString *)kUTTypeMPEG4 error:&error];
+		if (error){
+            NSLog(@"error in creating asset writer: %@",error.localizedDescription);
+        }
+    }
+    return _assetWriter;
+}
+
+
 #pragma mark - camera public api
 - (void)setupCamera
 {
-    self.sessionQueue = dispatch_queue_create("setup session queue", DISPATCH_QUEUE_SERIAL);
+
     dispatch_async(self.sessionQueue, ^{
         
         //TODO: check device authorization
@@ -105,7 +129,7 @@
         }
         
         //video output
-#if OUTPUT==MOVIE
+#ifdef MOVIE
         if ([self.session canAddOutput:self.movieOutput]){
             [self.session addOutput:self.movieOutput];
 
@@ -154,7 +178,7 @@
 {
     self.recording = YES;
     dispatch_async(self.sessionQueue, ^{
-#if OUTPUT==MOVIE
+#ifdef MOVIE
         if (![self.movieOutput isRecording]){
             NSString *outputFilePath = [NSTemporaryDirectory() stringByAppendingPathComponent:[[NSString stringWithFormat:@"%@",[NSDate date]]stringByAppendingPathExtension:@"mov"]];
 			[self.movieOutput startRecordingToOutputFileURL:[NSURL fileURLWithPath:outputFilePath] recordingDelegate:self];
@@ -169,19 +193,19 @@
 {
     self.recording = NO;
     dispatch_async(self.sessionQueue, ^{
-#if OUTPUT==MOVIE
+#ifdef MOVIE
         if ([self.movieOutput isRecording]){
             [self.movieOutput stopRecording];
         }
 #else
-        
+        self.assetWriter = nil;
 #endif
     });
 }
 
 
 #pragma mark - File Output Delegate
-#if OUTPUT==MOVIE
+#ifdef MOVIE
 - (void)captureOutput:(AVCaptureFileOutput *)captureOutput didStartRecordingToOutputFileAtURL:(NSURL *)fileURL fromConnections:(NSArray *)connections
 {
     
@@ -199,7 +223,6 @@
         }else{
             [[NSFileManager defaultManager] removeItemAtURL:outputFileURL error:&error];
         }
-        outputFileURL = nil;
     }];
 }
 #endif
@@ -207,7 +230,15 @@
 #pragma mark - AVCaptureVideoDataOutput delegate methods
 - (void)captureOutput:(AVCaptureOutput *)captureOutput didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer fromConnection:(AVCaptureConnection *)connection
 {
-    
+    dispatch_async(self.writerQueue, ^{
+        if (!self.assetWriter || !self.isRecording){
+            return;
+        }
+        
+        if ([connection isEqual:self.videoConnection]){
+            
+        }
+    });
 }
 
 
