@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		553C7E2C190E21E200143E3B /* AssetsLibrary.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 553C7E2B190E21E200143E3B /* AssetsLibrary.framework */; };
 		55A32629190A6AF500165AB2 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 55A32628190A6AF500165AB2 /* Foundation.framework */; };
 		55A3262B190A6AF500165AB2 /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 55A3262A190A6AF500165AB2 /* CoreGraphics.framework */; };
 		55A3262D190A6AF500165AB2 /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 55A3262C190A6AF500165AB2 /* UIKit.framework */; };
@@ -36,6 +37,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		553C7E2B190E21E200143E3B /* AssetsLibrary.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AssetsLibrary.framework; path = System/Library/Frameworks/AssetsLibrary.framework; sourceTree = SDKROOT; };
 		55A32625190A6AF500165AB2 /* Vanilla Camera.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Vanilla Camera.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		55A32628190A6AF500165AB2 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = System/Library/Frameworks/Foundation.framework; sourceTree = SDKROOT; };
 		55A3262A190A6AF500165AB2 /* CoreGraphics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreGraphics.framework; path = System/Library/Frameworks/CoreGraphics.framework; sourceTree = SDKROOT; };
@@ -65,6 +67,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				553C7E2C190E21E200143E3B /* AssetsLibrary.framework in Frameworks */,
 				55A32661190A713F00165AB2 /* AVFoundation.framework in Frameworks */,
 				55A3262B190A6AF500165AB2 /* CoreGraphics.framework in Frameworks */,
 				55A3262D190A6AF500165AB2 /* UIKit.framework in Frameworks */,
@@ -107,6 +110,7 @@
 		55A32627190A6AF500165AB2 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				553C7E2B190E21E200143E3B /* AssetsLibrary.framework */,
 				55A32660190A713F00165AB2 /* AVFoundation.framework */,
 				55A32628190A6AF500165AB2 /* Foundation.framework */,
 				55A3262A190A6AF500165AB2 /* CoreGraphics.framework */,
@@ -467,6 +471,7 @@
 				55A32659190A6AF500165AB2 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
 		};
 		55A3265A190A6AF500165AB2 /* Build configuration list for PBXNativeTarget "Vanilla CameraTests" */ = {
 			isa = XCConfigurationList;
@@ -475,6 +480,7 @@
 				55A3265C190A6AF500165AB2 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
 	};
