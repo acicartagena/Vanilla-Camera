@@ -22,6 +22,7 @@
 
 @property (strong, nonatomic) AVCaptureMovieFileOutput *movieOutput;
 @property (strong, nonatomic) AVAssetWriter *assetWriter;
+@property (strong, nonatomic) AVAssetWriterInput *assetWriterVideoInput;
 
 @property (nonatomic) dispatch_queue_t sessionQueue;
 @property (nonatomic) dispatch_queue_t writerQueue;
@@ -104,6 +105,16 @@
 		_assetWriter = [[AVAssetWriter alloc] initWithURL:[NSURL URLWithString:outputFilePath] fileType:(NSString *)kUTTypeMPEG4 error:&error];
 		if (error){
             NSLog(@"error in creating asset writer: %@",error.localizedDescription);
+        }
+        
+        if ([_assetWriter canApplyOutputSettings:videoCompressionSettings forMediaType:AVMediaTypeVideo]){
+            self.assetWriterVideoInput = [[AVAssetWriterInput alloc] initWithMediaType:AVMediaTypeVideo outputSettings:videoCompressionSettings];
+            self.assetWriterVideoInput.expectsMediaDataInRealTime = YES;
+            if ([_assetWriter canAddInput:self.assetWriterVideoInput]){
+                [_assetWriter addInput:self.assetWriterVideoInput];
+            }else{
+                NSLog(@"error in adding asset writer input");
+            }
         }
     }
     return _assetWriter;
@@ -240,6 +251,38 @@
         }
     });
 }
+
+- (void) writeSampleBuffer:(CMSampleBufferRef)sampleBuffer ofType:(NSString *)mediaType
+{
+	if ( self.assetWriter.status == AVAssetWriterStatusUnknown ) {
+		
+        if ([self.assetWriter startWriting]) {
+			[self.assetWriter startSessionAtSourceTime:CMSampleBufferGetPresentationTimeStamp(sampleBuffer)];
+		}
+		else {
+            NSLog(@"error");
+		}
+	}
+	
+	if ( self.assetWriter.status == AVAssetWriterStatusWriting ) {
+		
+		if (mediaType == AVMediaTypeVideo) {
+			if (self.assetWriterVideoInput.readyForMoreMediaData) {
+				if (![self.assetWriterVideoInput appendSampleBuffer:sampleBuffer]) {
+					NSLog(@"error");
+				}
+			}
+		}
+//		else if (mediaType == AVMediaTypeAudio) {
+//			if (assetWriterAudioIn.readyForMoreMediaData) {
+//				if (![assetWriterAudioIn appendSampleBuffer:sampleBuffer]) {
+//					[self showError:[assetWriter error]];
+//				}
+//			}
+//		}
+	}
+}
+
 
 
 @end
