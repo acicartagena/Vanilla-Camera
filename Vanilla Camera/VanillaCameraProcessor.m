@@ -5,6 +5,16 @@
 //  Created by Angela Cartagena on 4/25/14.
 //
 //
+//TODO: (no order)
+// include audio
+// optimize compression
+// check authorization for camera
+// compile videos (stop/start)
+// include front and back camera
+// add capture options (flash, focus, exposure)
+// file system view
+// player
+// add filters
 
 #import "VanillaCameraProcessor.h"
 
@@ -28,6 +38,8 @@
 @property (nonatomic) dispatch_queue_t writerQueue;
 
 @property (strong, nonatomic) NSURL *videoURL;
+
+@property (nonatomic, getter = isAssetWriterVideoOutputSetupFinished) BOOL assetWriterVideoOutputSetupFinished;
 @end
 
 @implementation VanillaCameraProcessor
@@ -93,21 +105,40 @@
     return _movieOutput;
 }
 
-#pragma mark - setup
-- (void)setupAssetWriter
+- (AVAssetWriter *)assetWriter
 {
+    if (!_assetWriter){
+        NSError *error;
+        self.videoURL = [NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:[[NSString stringWithFormat:@"%@",[NSDate date]] stringByAppendingPathExtension:@"mp4"]]];
+        _assetWriter = [[AVAssetWriter alloc] initWithURL:self.videoURL fileType:(NSString *)kUTTypeMPEG4 error:&error];
+        
+        if (error){
+            NSLog(@"error in creating asset writer: %@",error.localizedDescription);
+        }
+    }
+    return _assetWriter;
+}
+#pragma mark - setup
+- (void)setupAssetWriterVideoCompression:(CMFormatDescriptionRef)formatDescription
+{
+    float bitsPerPixel;
+    int bitsPerSecond;
+    
+    CMVideoDimensions dimensions = CMVideoFormatDescriptionGetDimensions(formatDescription);
+    int numPixels = dimensions.width *dimensions.height;
+    
+    // Assume that lower-than-SD resolutions are intended for streaming, and use a lower bitrate
+	if ( numPixels < (640 * 480) )
+		bitsPerPixel = 4.05; // This bitrate matches the quality produced by AVCaptureSessionPresetMedium or Low.
+	else
+		bitsPerPixel = 11.4; // This bitrate matches the quality produced by AVCaptureSessionPresetHigh.
+	
+	bitsPerSecond = numPixels * bitsPerPixel;
     
     NSDictionary *videoCompressionSettings = @{AVVideoCodecKey:AVVideoCodecH264,
-                                               AVVideoHeightKey:@(480),
-                                               AVVideoWidthKey:@(640),
-                                               AVVideoCompressionPropertiesKey:@{AVVideoAverageBitRateKey:@(11.4),     AVVideoMaxKeyFrameIntervalKey:@(30)}};
-    NSError *error;
-    self.videoURL = [NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:[[NSString stringWithFormat:@"%@",[NSDate date]] stringByAppendingPathExtension:@"mov"]]];
-    self.assetWriter = [[AVAssetWriter alloc] initWithURL:self.videoURL fileType:(NSString *)kUTTypeMPEG4 error:&error];
-    
-    if (error){
-        NSLog(@"error in creating asset writer: %@",error.localizedDescription);
-    }
+                                               AVVideoHeightKey:@(dimensions.height),
+                                               AVVideoWidthKey:@(dimensions.width),
+                                               AVVideoCompressionPropertiesKey:@{AVVideoAverageBitRateKey:@(bitsPerSecond),     AVVideoMaxKeyFrameIntervalKey:@(30)}};
     
     if ([self.assetWriter canApplyOutputSettings:videoCompressionSettings forMediaType:AVMediaTypeVideo]){
         self.assetWriterVideoInput = [[AVAssetWriterInput alloc] initWithMediaType:AVMediaTypeVideo outputSettings:videoCompressionSettings];
@@ -202,7 +233,7 @@
     });
 #else
     dispatch_async(self.writerQueue, ^{
-        [self setupAssetWriter];
+        [self assetWriter];
     });
 #endif
 }
@@ -222,6 +253,7 @@
         
         if (self.assetWriter.status == AVAssetWriterStatusUnknown || self.assetWriter.status == AVAssetWriterStatusFailed){
             self.assetWriter = nil;
+            self.assetWriterVideoOutputSetupFinished = NO;
             NSLog(@"%s: asset writer status: %i",__PRETTY_FUNCTION__, self.assetWriter.status);
         }
         
@@ -230,13 +262,19 @@
 //            [input markAsFinished];
 //        }];
         [self.assetWriter finishWritingWithCompletionHandler:^{
+            [self saveToAssetsLibrary];
+            
+            NSFileManager *fileManager = [NSFileManager defaultManager];
+            NSError *error = nil;
+            NSDictionary *fileDetails = [fileManager attributesOfItemAtPath:self.videoURL.path error:&error];
+
             self.assetWriter = nil;
+            self.assetWriterVideoOutputSetupFinished = NO;
         }];
     });
 #endif
 }
 
-#pragma mark - private methods
 - (void)saveToAssetsLibrary
 {
     ALAssetsLibrary* library = [[ALAssetsLibrary alloc] init];
@@ -244,7 +282,7 @@
         if (error){
             NSLog(@"error: %@",error.localizedDescription);
         }else{
-            [[NSFileManager defaultManager] removeItemAtURL:self.videoURL error:&error];
+//            [[NSFileManager defaultManager] removeItemAtURL:self.videoURL error:&error];
         }
         self.assetWriter = nil;
     }];
@@ -280,8 +318,17 @@
         return;
     }
     if ([connection isEqual:self.videoConnection]){
+        if (!self.isAssetWriterVideoOutputSetupFinished){
+            CMFormatDescriptionRef formatDescription = CMSampleBufferGetFormatDescription(sampleBuffer);
+            [self setupAssetWriterVideoCompression:formatDescription];
+            self.assetWriterVideoOutputSetupFinished = YES;
+        }
+        
         CFRetain(sampleBuffer);
+        
         [self writeSampleBuffer:sampleBuffer ofType:AVMediaTypeVideo];
+
+        //don't forget to release buffer!
         CFRelease(sampleBuffer);
     }
 }
