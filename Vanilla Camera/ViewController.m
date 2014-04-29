@@ -47,11 +47,18 @@
     
     [self.camera stopCameraCapture];
 }
+
 - (void)didReceiveMemoryWarning
 {
     [super didReceiveMemoryWarning];
     // Dispose of any resources that can be recreated.
 }
+
+//- (void)willRotateToInterfaceOrientation:(UIInterfaceOrientation)toInterfaceOrientation duration:(NSTimeInterval)duration
+//{
+//    
+//    [self.camera updateView:self.previewView orientation:toInterfaceOrientation];
+//}
 
 #pragma mark - lazy load properties
 - (VanillaCameraProcessor *)camera
@@ -68,7 +75,6 @@
     if (!self.camera.isRecording){
         [self.camera startRecording];
     }
-    
 }
 
 - (void)touchesEnded:(NSSet *)touches withEvent:(UIEvent *)event

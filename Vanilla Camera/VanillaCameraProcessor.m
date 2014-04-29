@@ -7,7 +7,6 @@
 //
 //TODO: (no order)
 // include audio
-// optimize compression
 // check authorization for camera
 // compile videos (stop/start)
 // include front and back camera
@@ -16,11 +15,10 @@
 // player
 // add filters
 
+
 #import "VanillaCameraProcessor.h"
 
-//OUTPUT MODE
-//#define MOVIE
-#define VIDEODATA
+
 
 @interface VanillaCameraProcessor ()
 
@@ -40,6 +38,10 @@
 @property (strong, nonatomic) NSURL *videoURL;
 
 @property (nonatomic, getter = isAssetWriterVideoOutputSetupFinished) BOOL assetWriterVideoOutputSetupFinished;
+
+@property (weak, nonatomic) AVCaptureVideoPreviewLayer *previewLayer;
+
+
 @end
 
 @implementation VanillaCameraProcessor
@@ -48,7 +50,7 @@
 {
     self = [super init];
     if (self){
-        [self.session setSessionPreset:AVCaptureSessionPresetMedium];
+        [self session];
     }
     return self;
 }
@@ -58,6 +60,7 @@
 {
     if (!_session){
         _session = [[AVCaptureSession alloc] init];
+        [_session setSessionPreset:AVCaptureSessionPreset640x480];
         self.sessionQueue = dispatch_queue_create("setup session queue", DISPATCH_QUEUE_SERIAL);
     }
     return _session;
@@ -118,41 +121,8 @@
     }
     return _assetWriter;
 }
-#pragma mark - setup
-- (void)setupAssetWriterVideoCompression:(CMFormatDescriptionRef)formatDescription
-{
-    float bitsPerPixel;
-    int bitsPerSecond;
-    
-    CMVideoDimensions dimensions = CMVideoFormatDescriptionGetDimensions(formatDescription);
-    int numPixels = dimensions.width *dimensions.height;
-    
-    // Assume that lower-than-SD resolutions are intended for streaming, and use a lower bitrate
-	if ( numPixels < (640 * 480) )
-		bitsPerPixel = 4.05; // This bitrate matches the quality produced by AVCaptureSessionPresetMedium or Low.
-	else
-		bitsPerPixel = 11.4; // This bitrate matches the quality produced by AVCaptureSessionPresetHigh.
-	
-	bitsPerSecond = numPixels * bitsPerPixel;
-    
-    NSDictionary *videoCompressionSettings = @{AVVideoCodecKey:AVVideoCodecH264,
-                                               AVVideoHeightKey:@(dimensions.height),
-                                               AVVideoWidthKey:@(dimensions.width),
-                                               AVVideoCompressionPropertiesKey:@{AVVideoAverageBitRateKey:@(bitsPerSecond),     AVVideoMaxKeyFrameIntervalKey:@(30)}};
-    
-    if ([self.assetWriter canApplyOutputSettings:videoCompressionSettings forMediaType:AVMediaTypeVideo]){
-        self.assetWriterVideoInput = [[AVAssetWriterInput alloc] initWithMediaType:AVMediaTypeVideo outputSettings:videoCompressionSettings];
-        self.assetWriterVideoInput.expectsMediaDataInRealTime = YES;
-        if ([self.assetWriter canAddInput:self.assetWriterVideoInput]){
-            [self.assetWriter addInput:self.assetWriterVideoInput];
-        }else{
-            NSLog(@"error in adding asset writer input");
-        }
-    }
-    
-}
 
-#pragma mark - camera public api
+#pragma mark - setup
 - (void)setupCamera
 {
     
@@ -198,14 +168,104 @@
 {
     dispatch_async(dispatch_get_main_queue(), ^{
         CALayer *previewLayer = previewView.layer;
+        
         AVCaptureVideoPreviewLayer *preview = [[AVCaptureVideoPreviewLayer alloc] initWithSession:self.session];
-        
+        preview.videoGravity = AVLayerVideoGravityResizeAspect;
         //fix for preview not showing. set preview frame
-        preview.frame = previewLayer.bounds;
-        
+        preview.frame = previewView.bounds;
         [previewLayer addSublayer:preview];
     });
 }
+
+- (void)updateView:(UIView *)view orientation:(UIInterfaceOrientation)orientation
+{
+//    dispatch_async(dispatch_get_main_queue(), ^{
+    for (CALayer *sublayer in view.layer.sublayers) {
+        if ([sublayer isKindOfClass:[AVCaptureVideoPreviewLayer class]]){
+            AVCaptureVideoPreviewLayer *previewLayer = (AVCaptureVideoPreviewLayer *)sublayer;
+            [[previewLayer connection] setVideoOrientation:(AVCaptureVideoOrientation)orientation];
+        }
+    }
+//    });
+}
+
+- (void)setupAssetWriterVideoCompression:(CMFormatDescriptionRef)formatDescription
+{
+    float bitsPerPixel;
+    int bitsPerSecond;
+    
+    CMVideoDimensions dimensions = CMVideoFormatDescriptionGetDimensions(formatDescription);
+    int numPixels = dimensions.width *dimensions.height;
+    
+    // Assume that lower-than-SD resolutions are intended for streaming, and use a lower bitrate
+//    bitsPerPixel = numPixels < (640*480) ? 4.05: 11.4;
+    bitsPerPixel = 3.05f;       //lower bitrate for more compressed files
+	bitsPerSecond = numPixels * bitsPerPixel;
+
+    NSDictionary *videoCompressionSettings = @{AVVideoCodecKey:AVVideoCodecH264,
+                                               AVVideoHeightKey:@(dimensions.height),
+                                               AVVideoWidthKey:@(dimensions.width),
+                                               AVVideoCompressionPropertiesKey:@{AVVideoAverageBitRateKey:@(bitsPerSecond),     AVVideoMaxKeyFrameIntervalKey:@(30)}};
+    //compress later
+//    NSDictionary *videoCompressionSettings = @{AVVideoCodecKey:AVVideoCodecH264,
+//                                               AVVideoHeightKey:@(dimensions.height),
+//                                               AVVideoWidthKey:@(dimensions.width)};
+
+    
+    if ([self.assetWriter canApplyOutputSettings:videoCompressionSettings forMediaType:AVMediaTypeVideo]){
+        self.assetWriterVideoInput = [[AVAssetWriterInput alloc] initWithMediaType:AVMediaTypeVideo outputSettings:videoCompressionSettings];
+        self.assetWriterVideoInput.expectsMediaDataInRealTime = YES;
+        self.assetWriterVideoInput.transform = [self transformFromCurrentVideoOrientationToOrientation:AVCaptureVideoOrientationPortrait];
+        if ([self.assetWriter canAddInput:self.assetWriterVideoInput]){
+            [self.assetWriter addInput:self.assetWriterVideoInput];
+        }else{
+            NSLog(@"error in adding asset writer input");
+        }
+    }
+    
+}
+
+- (CGAffineTransform)transformFromCurrentVideoOrientationToOrientation:(AVCaptureVideoOrientation)orientation
+{
+	CGAffineTransform transform = CGAffineTransformIdentity;
+    
+	// Calculate offsets from an arbitrary reference orientation (portrait)
+	CGFloat orientationAngleOffset = [self angleOffsetFromPortraitOrientationToOrientation:orientation];
+	CGFloat videoOrientationAngleOffset = [self angleOffsetFromPortraitOrientationToOrientation:self.videoConnection.videoOrientation];
+	
+	// Find the difference in angle between the passed in orientation and the current video orientation
+	CGFloat angleOffset = orientationAngleOffset - videoOrientationAngleOffset;
+	transform = CGAffineTransformMakeRotation(angleOffset);
+	
+	return transform;
+}
+
+- (CGFloat)angleOffsetFromPortraitOrientationToOrientation:(AVCaptureVideoOrientation)orientation
+{
+	CGFloat angle = 0.0;
+	
+	switch (orientation) {
+		case AVCaptureVideoOrientationPortrait:
+			angle = 0.0;
+			break;
+		case AVCaptureVideoOrientationPortraitUpsideDown:
+			angle = M_PI;
+			break;
+		case AVCaptureVideoOrientationLandscapeRight:
+			angle = -M_PI_2;
+			break;
+		case AVCaptureVideoOrientationLandscapeLeft:
+			angle = M_PI_2;
+			break;
+		default:
+			break;
+	}
+    
+	return angle;
+}
+
+#pragma mark - camera controls
+
 
 - (void)startCameraCapture
 {
@@ -267,13 +327,20 @@
             NSFileManager *fileManager = [NSFileManager defaultManager];
             NSError *error = nil;
             NSDictionary *fileDetails = [fileManager attributesOfItemAtPath:self.videoURL.path error:&error];
-
+            NSLog(@"FILE SIZE: file size: %@",fileDetails[NSFileSize]);
             self.assetWriter = nil;
             self.assetWriterVideoOutputSetupFinished = NO;
         }];
     });
 #endif
 }
+
+- (void)updatePreivewView:(UIView *)preview orientation:(UIInterfaceOrientation)orientation
+{
+    [self.videoConnection setVideoOrientation:(AVCaptureVideoOrientation)orientation];
+}
+
+#pragma mark - output methods
 
 - (void)saveToAssetsLibrary
 {
@@ -288,7 +355,7 @@
     }];
 }
 
-#pragma mark - File Output Delegate
+#pragma mark - file output delegate (AVCaptureMovieFileOutput)
 #ifdef MOVIE
 - (void)captureOutput:(AVCaptureFileOutput *)captureOutput didStartRecordingToOutputFileAtURL:(NSURL *)fileURL fromConnections:(NSArray *)connections
 {
@@ -309,9 +376,9 @@
         }
     }];
 }
-#endif
 
-#pragma mark - AVCaptureVideoDataOutput delegate methods
+#else
+#pragma mark - avcapturevideodataoutput delegate methods
 - (void)captureOutput:(AVCaptureOutput *)captureOutput didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer fromConnection:(AVCaptureConnection *)connection
 {
     if (!self.assetWriter || !self.isRecording){
@@ -333,30 +400,23 @@
     }
 }
 
-- (void)captureOutput:(AVCaptureOutput *)captureOutput didDropSampleBuffer:(CMSampleBufferRef)sampleBuffer fromConnection:(AVCaptureConnection *)connection
-{
-    NSLog(@"asset writer drop");
-}
-
+#pragma mark - buffer processing
 - (void) writeSampleBuffer:(CMSampleBufferRef)sampleBuffer ofType:(NSString *)mediaType
 {
-    NSLog(@"%s",__PRETTY_FUNCTION__);
 	if ( self.assetWriter.status == AVAssetWriterStatusUnknown ) {
-        NSLog(@"%s: assetwriter status: unknown",__PRETTY_FUNCTION__);
         if ([self.assetWriter startWriting]) {
 			[self.assetWriter startSessionAtSourceTime:CMSampleBufferGetPresentationTimeStamp(sampleBuffer)];
 		}
 		else {
-            NSLog(@"error");
+            NSLog(@"error: assetWriter start writing");
 		}
 	}
 	
 	if ( self.assetWriter.status == AVAssetWriterStatusWriting ) {
-        NSLog(@"%s: assetwriter status: writing",__PRETTY_FUNCTION__);
 		if (mediaType == AVMediaTypeVideo) {
 			if (self.assetWriterVideoInput.readyForMoreMediaData) {
 				if (![self.assetWriterVideoInput appendSampleBuffer:sampleBuffer]) {
-					NSLog(@"error");
+					NSLog(@"error asset writer append sample buffer");
 				}
 			}
 		}
@@ -369,7 +429,6 @@
         //		}
 	}
 }
-
-
+#endif
 
 @end
