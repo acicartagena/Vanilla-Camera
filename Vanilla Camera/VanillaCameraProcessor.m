@@ -27,7 +27,7 @@
 @property (nonatomic) dispatch_queue_t sessionQueue;
 @property (nonatomic) dispatch_queue_t writerQueue;
 
-
+@property (strong, nonatomic) NSURL *videoURL;
 @end
 
 @implementation VanillaCameraProcessor
@@ -77,12 +77,10 @@
         _videoOutput = [[AVCaptureVideoDataOutput alloc] init];
         [_videoOutput setAlwaysDiscardsLateVideoFrames:YES];
         
-        dispatch_queue_t queue;
-        queue = dispatch_queue_create("Vanilla Camera Video Output Queue", DISPATCH_QUEUE_SERIAL);
-        [_videoOutput setSampleBufferDelegate:self queue:queue];
+        self.writerQueue = dispatch_queue_create("writer queue", DISPATCH_QUEUE_SERIAL);
+        [_videoOutput setSampleBufferDelegate:self queue:self.writerQueue];
         
         [_videoOutput setVideoSettings:@{(NSString *)kCVPixelBufferPixelFormatTypeKey:@(kCVPixelFormatType_32BGRA)}];
-        self.videoConnection = [_videoOutput connectionWithMediaType:AVMediaTypeVideo];
     }
     return _videoOutput;
 }
@@ -95,36 +93,38 @@
     return _movieOutput;
 }
 
-- (AVAssetWriter *)assetWriter
+#pragma mark - setup
+- (void)setupAssetWriter
 {
-    if (!_assetWriter){
-        NSDictionary *videoCompressionSettings = @{AVVideoCodecKey: AVVideoCodecH264,
-                                                   AVVideoCompressionPropertiesKey: @{AVVideoAverageBitRateKey:@(11.4),     AVVideoMaxKeyFrameIntervalKey: @(30)}};
-        NSError *error;
-        NSString *outputFilePath = [NSTemporaryDirectory() stringByAppendingPathComponent:[[NSString stringWithFormat:@"%@",[NSDate date]]stringByAppendingPathExtension:@"mov"]];
-		_assetWriter = [[AVAssetWriter alloc] initWithURL:[NSURL URLWithString:outputFilePath] fileType:(NSString *)kUTTypeMPEG4 error:&error];
-		if (error){
-            NSLog(@"error in creating asset writer: %@",error.localizedDescription);
-        }
-        
-        if ([_assetWriter canApplyOutputSettings:videoCompressionSettings forMediaType:AVMediaTypeVideo]){
-            self.assetWriterVideoInput = [[AVAssetWriterInput alloc] initWithMediaType:AVMediaTypeVideo outputSettings:videoCompressionSettings];
-            self.assetWriterVideoInput.expectsMediaDataInRealTime = YES;
-            if ([_assetWriter canAddInput:self.assetWriterVideoInput]){
-                [_assetWriter addInput:self.assetWriterVideoInput];
-            }else{
-                NSLog(@"error in adding asset writer input");
-            }
+    
+    NSDictionary *videoCompressionSettings = @{AVVideoCodecKey:AVVideoCodecH264,
+                                               AVVideoHeightKey:@(480),
+                                               AVVideoWidthKey:@(640),
+                                               AVVideoCompressionPropertiesKey:@{AVVideoAverageBitRateKey:@(11.4),     AVVideoMaxKeyFrameIntervalKey:@(30)}};
+    NSError *error;
+    self.videoURL = [NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:[[NSString stringWithFormat:@"%@",[NSDate date]] stringByAppendingPathExtension:@"mov"]]];
+    self.assetWriter = [[AVAssetWriter alloc] initWithURL:self.videoURL fileType:(NSString *)kUTTypeMPEG4 error:&error];
+    
+    if (error){
+        NSLog(@"error in creating asset writer: %@",error.localizedDescription);
+    }
+    
+    if ([self.assetWriter canApplyOutputSettings:videoCompressionSettings forMediaType:AVMediaTypeVideo]){
+        self.assetWriterVideoInput = [[AVAssetWriterInput alloc] initWithMediaType:AVMediaTypeVideo outputSettings:videoCompressionSettings];
+        self.assetWriterVideoInput.expectsMediaDataInRealTime = YES;
+        if ([self.assetWriter canAddInput:self.assetWriterVideoInput]){
+            [self.assetWriter addInput:self.assetWriterVideoInput];
+        }else{
+            NSLog(@"error in adding asset writer input");
         }
     }
-    return _assetWriter;
+    
 }
-
 
 #pragma mark - camera public api
 - (void)setupCamera
 {
-
+    
     dispatch_async(self.sessionQueue, ^{
         
         //TODO: check device authorization
@@ -143,7 +143,7 @@
 #ifdef MOVIE
         if ([self.session canAddOutput:self.movieOutput]){
             [self.session addOutput:self.movieOutput];
-
+            
             //video stabilization
             AVCaptureConnection *connection = [self.movieOutput connectionWithMediaType:AVMediaTypeVideo];
 			if ([connection isVideoStabilizationSupported])
@@ -152,10 +152,15 @@
 #else
         if ([self.session canAddOutput:self.videoOutput]){
             [self.session addOutput:self.videoOutput];
+            
+            self.videoConnection = [self.videoOutput connectionWithMediaType:AVMediaTypeVideo];
+            if ([self.videoConnection isVideoStabilizationSupported]){
+				[self.videoConnection setEnablesVideoStabilizationWhenAvailable:YES];
+            }
         }
 #endif
     });
-
+    
 }
 
 - (void)setupPreviewWithView:(UIView *)previewView
@@ -188,32 +193,62 @@
 - (void)startRecording
 {
     self.recording = YES;
-    dispatch_async(self.sessionQueue, ^{
 #ifdef MOVIE
+    dispatch_async(self.sessionQueue, ^{
         if (![self.movieOutput isRecording]){
             NSString *outputFilePath = [NSTemporaryDirectory() stringByAppendingPathComponent:[[NSString stringWithFormat:@"%@",[NSDate date]]stringByAppendingPathExtension:@"mov"]];
-			[self.movieOutput startRecordingToOutputFileURL:[NSURL fileURLWithPath:outputFilePath] recordingDelegate:self];
+            [self.movieOutput startRecordingToOutputFileURL:[NSURL fileURLWithPath:outputFilePath] recordingDelegate:self];
         }
-#else
-        
-#endif
     });
+#else
+    dispatch_async(self.writerQueue, ^{
+        [self setupAssetWriter];
+    });
+#endif
 }
 
 - (void)stopRecording
 {
     self.recording = NO;
-    dispatch_async(self.sessionQueue, ^{
+
 #ifdef MOVIE
+    dispatch_async(self.sessionQueue, ^{
         if ([self.movieOutput isRecording]){
             [self.movieOutput stopRecording];
         }
-#else
-        self.assetWriter = nil;
-#endif
     });
+#else
+    dispatch_async(self.writerQueue, ^{
+        
+        if (self.assetWriter.status == AVAssetWriterStatusUnknown || self.assetWriter.status == AVAssetWriterStatusFailed){
+            self.assetWriter = nil;
+            NSLog(@"%s: asset writer status: %i",__PRETTY_FUNCTION__, self.assetWriter.status);
+        }
+        
+//        [self.assetWriter.inputs enumerateObjectsUsingBlock:^(id obj, NSUInteger idx, BOOL *stop) {
+//            AVAssetWriterInput *input = (AVAssetWriterInput *)obj;
+//            [input markAsFinished];
+//        }];
+        [self.assetWriter finishWritingWithCompletionHandler:^{
+            self.assetWriter = nil;
+        }];
+    });
+#endif
 }
 
+#pragma mark - private methods
+- (void)saveToAssetsLibrary
+{
+    ALAssetsLibrary* library = [[ALAssetsLibrary alloc] init];
+    [library writeVideoAtPathToSavedPhotosAlbum:self.videoURL completionBlock:^(NSURL *assetURL, NSError *error) {
+        if (error){
+            NSLog(@"error: %@",error.localizedDescription);
+        }else{
+            [[NSFileManager defaultManager] removeItemAtURL:self.videoURL error:&error];
+        }
+        self.assetWriter = nil;
+    }];
+}
 
 #pragma mark - File Output Delegate
 #ifdef MOVIE
@@ -241,21 +276,26 @@
 #pragma mark - AVCaptureVideoDataOutput delegate methods
 - (void)captureOutput:(AVCaptureOutput *)captureOutput didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer fromConnection:(AVCaptureConnection *)connection
 {
-    dispatch_async(self.writerQueue, ^{
-        if (!self.assetWriter || !self.isRecording){
-            return;
-        }
-        
-        if ([connection isEqual:self.videoConnection]){
-            
-        }
-    });
+    if (!self.assetWriter || !self.isRecording){
+        return;
+    }
+    if ([connection isEqual:self.videoConnection]){
+        CFRetain(sampleBuffer);
+        [self writeSampleBuffer:sampleBuffer ofType:AVMediaTypeVideo];
+        CFRelease(sampleBuffer);
+    }
+}
+
+- (void)captureOutput:(AVCaptureOutput *)captureOutput didDropSampleBuffer:(CMSampleBufferRef)sampleBuffer fromConnection:(AVCaptureConnection *)connection
+{
+    NSLog(@"asset writer drop");
 }
 
 - (void) writeSampleBuffer:(CMSampleBufferRef)sampleBuffer ofType:(NSString *)mediaType
 {
+    NSLog(@"%s",__PRETTY_FUNCTION__);
 	if ( self.assetWriter.status == AVAssetWriterStatusUnknown ) {
-		
+        NSLog(@"%s: assetwriter status: unknown",__PRETTY_FUNCTION__);
         if ([self.assetWriter startWriting]) {
 			[self.assetWriter startSessionAtSourceTime:CMSampleBufferGetPresentationTimeStamp(sampleBuffer)];
 		}
@@ -265,7 +305,7 @@
 	}
 	
 	if ( self.assetWriter.status == AVAssetWriterStatusWriting ) {
-		
+        NSLog(@"%s: assetwriter status: writing",__PRETTY_FUNCTION__);
 		if (mediaType == AVMediaTypeVideo) {
 			if (self.assetWriterVideoInput.readyForMoreMediaData) {
 				if (![self.assetWriterVideoInput appendSampleBuffer:sampleBuffer]) {
@@ -273,13 +313,13 @@
 				}
 			}
 		}
-//		else if (mediaType == AVMediaTypeAudio) {
-//			if (assetWriterAudioIn.readyForMoreMediaData) {
-//				if (![assetWriterAudioIn appendSampleBuffer:sampleBuffer]) {
-//					[self showError:[assetWriter error]];
-//				}
-//			}
-//		}
+        //		else if (mediaType == AVMediaTypeAudio) {
+        //			if (assetWriterAudioIn.readyForMoreMediaData) {
+        //				if (![assetWriterAudioIn appendSampleBuffer:sampleBuffer]) {
+        //					[self showError:[assetWriter error]];
+        //				}
+        //			}
+        //		}
 	}
 }
 
