@@ -54,11 +54,11 @@
     // Dispose of any resources that can be recreated.
 }
 
-//- (void)willRotateToInterfaceOrientation:(UIInterfaceOrientation)toInterfaceOrientation duration:(NSTimeInterval)duration
-//{
-//    
+- (void)willRotateToInterfaceOrientation:(UIInterfaceOrientation)toInterfaceOrientation duration:(NSTimeInterval)duration
+{
+    
 //    [self.camera updateView:self.previewView orientation:toInterfaceOrientation];
-//}
+}
 
 #pragma mark - lazy load properties
 - (VanillaCameraProcessor *)camera

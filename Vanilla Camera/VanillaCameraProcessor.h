@@ -16,6 +16,10 @@
 //#define MOVIE
 #define VIDEODATA
 
+//DEBUG
+//#define LANDSCAPE_IS_WORKING
+#define LANDSCAPE_IS_NOT_WORKING
+
 @protocol VanillaCameraProcessorDelegate <NSObject>
 @optional
 - (void)pixelBufferReadyForDisplay:(CVPixelBufferRef)pixelBuffer;
@@ -40,6 +44,7 @@
 - (void)startRecording;
 - (void)stopRecording;
 
+#ifdef LANDSCAPE_IS_WORKING
 - (void)updateView:(UIView *)view orientation:(UIInterfaceOrientation)orientation;
-
+#endif
 @end

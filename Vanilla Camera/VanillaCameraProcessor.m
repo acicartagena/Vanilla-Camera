@@ -14,6 +14,7 @@
 // file system view
 // player
 // add filters
+// landscape
 
 
 #import "VanillaCameraProcessor.h"
@@ -26,7 +27,10 @@
 @property (strong, nonatomic) AVCaptureDeviceInput *audioInput;
 
 @property (strong, nonatomic) AVCaptureVideoDataOutput *videoOutput;
+@property (strong, nonatomic) AVCaptureAudioDataOutput *audioOutput;
+
 @property (strong, nonatomic) AVCaptureConnection *videoConnection;
+@property (strong, nonatomic) AVCaptureConnection *audioConnection;
 
 @property (strong, nonatomic) AVCaptureMovieFileOutput *movieOutput;
 @property (strong, nonatomic) AVAssetWriter *assetWriter;
@@ -40,7 +44,6 @@
 @property (nonatomic, getter = isAssetWriterVideoOutputSetupFinished) BOOL assetWriterVideoOutputSetupFinished;
 
 @property (weak, nonatomic) AVCaptureVideoPreviewLayer *previewLayer;
-
 
 @end
 
@@ -98,6 +101,14 @@
         [_videoOutput setVideoSettings:@{(NSString *)kCVPixelBufferPixelFormatTypeKey:@(kCVPixelFormatType_32BGRA)}];
     }
     return _videoOutput;
+}
+
+- (AVCaptureAudioDataOutput *)audioOutput
+{
+    if (!_audioOutput){
+        
+    }
+    return _audioOutput;
 }
 
 - (AVCaptureMovieFileOutput *)movieOutput
@@ -160,6 +171,8 @@
             }
         }
 #endif
+        //audio output
+
     });
     
 }
@@ -170,30 +183,43 @@
         CALayer *previewLayer = previewView.layer;
         
         AVCaptureVideoPreviewLayer *preview = [[AVCaptureVideoPreviewLayer alloc] initWithSession:self.session];
-        preview.videoGravity = AVLayerVideoGravityResizeAspect;
+//        preview.videoGravity = AVLayerVideoGravityResizeAspect;
         //fix for preview not showing. set preview frame
         preview.frame = previewView.bounds;
         [previewLayer addSublayer:preview];
     });
 }
 
+#ifdef LANDSCAPE_IS_WORKING
 - (void)updateView:(UIView *)view orientation:(UIInterfaceOrientation)orientation
 {
-//    dispatch_async(dispatch_get_main_queue(), ^{
+    dispatch_async(dispatch_get_main_queue(), ^{
     for (CALayer *sublayer in view.layer.sublayers) {
         if ([sublayer isKindOfClass:[AVCaptureVideoPreviewLayer class]]){
             AVCaptureVideoPreviewLayer *previewLayer = (AVCaptureVideoPreviewLayer *)sublayer;
-            [[previewLayer connection] setVideoOrientation:(AVCaptureVideoOrientation)orientation];
+            previewLayer.frame = view.bounds;
         }
     }
-//    });
+    switch (orientation) {
+        case UIInterfaceOrientationPortrait:
+            self.videoConnection.videoOrientation = AVCaptureVideoOrientationPortrait;
+            break;
+        case UIInterfaceOrientationLandscapeLeft:
+            self.videoConnection.videoOrientation = AVCaptureVideoOrientationLandscapeLeft;
+            break;
+        case UIInterfaceOrientationLandscapeRight:
+            self.videoConnection.videoOrientation = AVCaptureVideoOrientationLandscapeRight;
+        default:
+            break;
+    }
+    });
 }
+#endif
 
 - (void)setupAssetWriterVideoCompression:(CMFormatDescriptionRef)formatDescription
 {
     float bitsPerPixel;
     int bitsPerSecond;
-    
     CMVideoDimensions dimensions = CMVideoFormatDescriptionGetDimensions(formatDescription);
     int numPixels = dimensions.width *dimensions.height;
     
@@ -201,7 +227,9 @@
 //    bitsPerPixel = numPixels < (640*480) ? 4.05: 11.4;
     bitsPerPixel = 3.05f;       //lower bitrate for more compressed files
 	bitsPerSecond = numPixels * bitsPerPixel;
-
+    
+    NSLog(@"video orientation: %i vs portraint orientation: %i",(int)self.videoConnection.videoOrientation, (int)AVCaptureVideoOrientationPortrait);
+    NSLog(@"height: %i width:%i",dimensions.height,dimensions.width);
     NSDictionary *videoCompressionSettings = @{AVVideoCodecKey:AVVideoCodecH264,
                                                AVVideoHeightKey:@(dimensions.height),
                                                AVVideoWidthKey:@(dimensions.width),
