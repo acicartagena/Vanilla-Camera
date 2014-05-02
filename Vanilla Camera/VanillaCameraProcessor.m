@@ -382,8 +382,9 @@
         if (self.assetWriter.status == AVAssetWriterStatusUnknown || self.assetWriter.status == AVAssetWriterStatusFailed){
             self.assetWriter = nil;
             self.assetWriterVideoOutputSetupFinished = NO;
-            self.assetWriterAudioOutputSetupFinished = NO;
+            self.assetWriterAudioOutputSetupFinished = self.microphonePermissionGranted ? NO:YES; //only initialize to no, if microphone is being used
             NSLog(@"%s: asset writer status: %li",__PRETTY_FUNCTION__, (long)self.assetWriter.status);
+            return;
         }
         
         [self.assetWriter finishWritingWithCompletionHandler:^{
@@ -395,7 +396,7 @@
             NSLog(@"FILE SIZE: file size: %@",fileDetails[NSFileSize]);
             self.assetWriter = nil;
             self.assetWriterVideoOutputSetupFinished = NO;
-            self.assetWriterAudioOutputSetupFinished = NO;
+            self.assetWriterAudioOutputSetupFinished = self.microphonePermissionGranted ? NO:YES; //only initialize to no, if microphone is being used
             [[NSNotificationCenter defaultCenter] postNotificationName:kVanillaCamRecordingStopped object:self];
         }];
         [[NSNotificationCenter defaultCenter] postNotificationName:kVanillaCamFileFinished object:self];
