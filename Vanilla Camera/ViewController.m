@@ -84,5 +84,9 @@
     }
 }
 
+- (IBAction)toggleCamera:(id)sender
+{
+    [self.camera toggleCamera];
+}
 
 @end

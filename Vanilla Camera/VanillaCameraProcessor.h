@@ -48,6 +48,9 @@
 - (void)startRecording;
 - (void)stopRecording;
 
+//toggle won't work if the camera is currently recording
+- (void)toggleCamera;
+
 #ifdef LANDSCAPE_IS_WORKING
 - (void)updateView:(UIView *)view orientation:(UIInterfaceOrientation)orientation;
 #endif

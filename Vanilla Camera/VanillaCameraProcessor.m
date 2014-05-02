@@ -6,7 +6,6 @@
 //
 //
 //TODO: (no order)
-// check authorization for cameras
 // include front and back camera
 // add filters
 // landscape
@@ -38,6 +37,9 @@
 
 @property (nonatomic, getter = isAssetWriterVideoOutputSetupFinished) BOOL assetWriterVideoOutputSetupFinished;
 @property (nonatomic, getter = isAssetWriterAudioOutputSetupFinished) BOOL assetWriterAudioOutputSetupFinished;
+
+@property (nonatomic, getter = isFrontCameraUsed) BOOL frontCameraUsed;
+@property (nonatomic) BOOL hasMicrophonePermission;
 
 @property (weak, nonatomic) AVCaptureVideoPreviewLayer *previewLayer;
 
@@ -71,6 +73,9 @@
         NSError *error = nil;
         AVCaptureDevice *videoDevice = [[AVCaptureDevice devicesWithMediaType:AVMediaTypeVideo] firstObject];
         _videoInput = videoDevice ? [AVCaptureDeviceInput deviceInputWithDevice:videoDevice error:&error]:nil;
+        if (error){
+            [self showError:error];
+        }
     }
     return _videoInput;
 }
@@ -81,6 +86,9 @@
         NSError *error = nil;
         AVCaptureDevice *audioDevice = [[AVCaptureDevice devicesWithMediaType:AVMediaTypeAudio] firstObject];
         _audioInput = audioDevice ? [AVCaptureDeviceInput deviceInputWithDevice:audioDevice error:&error]:nil;
+        if (error){
+            [self showError:error];
+        }
     }
     return _audioInput;
 }
@@ -125,7 +133,7 @@
         _assetWriter = [[AVAssetWriter alloc] initWithURL:self.videoURL fileType:(NSString *)kUTTypeMPEG4 error:&error];
         
         if (error){
-            NSLog(@"error in creating asset writer: %@",error.localizedDescription);
+            [self showError:error];
         }
     }
     return _assetWriter;
@@ -404,6 +412,59 @@
     [self.videoConnection setVideoOrientation:(AVCaptureVideoOrientation)orientation];
 }
 
+- (void)toggleCamera
+{
+//    if (self.isRecording){
+//        return;
+//    }
+    
+    if (self.isFrontCameraUsed){
+        self.frontCameraUsed = NO;
+        [self switchCameraWithPosition:AVCaptureDevicePositionBack];
+    }else{
+        self.frontCameraUsed = YES;
+        [self switchCameraWithPosition:AVCaptureDevicePositionFront];
+    }
+}
+
+- (void)switchCameraWithPosition:(AVCaptureDevicePosition)position
+{
+    dispatch_async(self.sessionQueue, ^{
+        for (AVCaptureDevice *device in [AVCaptureDevice devicesWithMediaType:AVMediaTypeVideo]){
+            if ([device position] == position){
+                NSError *error = nil;
+                [self.session beginConfiguration];
+                
+                //remove current input
+                [self.session removeInput:self.videoInput];
+                self.videoInput = device ? [AVCaptureDeviceInput deviceInputWithDevice:device error:&error]:nil;
+                if (error){
+                    [self showError:error];
+                }
+                
+                //add desired input
+                if ([self.session canAddInput:self.videoInput]){
+                    [self.session addInput:self.videoInput];
+                }
+                
+                //remove and recreate video data output (needed if the camera is currently recording)
+                [self.session removeOutput:self.videoOutput];
+                self.videoOutput = nil;
+                if ([self.session canAddOutput:self.videoOutput]){
+                    [self.session addOutput:self.videoOutput];
+                    
+                    self.videoConnection = [self.videoOutput connectionWithMediaType:AVMediaTypeVideo];
+                    if ([self.videoConnection isVideoStabilizationSupported]){
+                        [self.videoConnection setEnablesVideoStabilizationWhenAvailable:YES];
+                    }
+                }
+                [self.session commitConfiguration];
+                break;
+            }
+        }
+    });
+}
+
 #pragma mark - output methods
 
 - (void)saveToAssetsLibrary
@@ -411,7 +472,7 @@
     ALAssetsLibrary* library = [[ALAssetsLibrary alloc] init];
     [library writeVideoAtPathToSavedPhotosAlbum:self.videoURL completionBlock:^(NSURL *assetURL, NSError *error) {
         if (error){
-            NSLog(@"error: %@",error.localizedDescription);
+            [self showError:error];
         }else{
 //            [[NSFileManager defaultManager] removeItemAtURL:self.videoURL error:&error];
         }
@@ -434,7 +495,7 @@
     ALAssetsLibrary* library = [[ALAssetsLibrary alloc] init];
     [library writeVideoAtPathToSavedPhotosAlbum:outputFileURL completionBlock:^(NSURL *assetURL, NSError *error) {
         if (error){
-            NSLog(@"error: %@",error.localizedDescription);
+            [self showError:error];
         }else{
             [[NSFileManager defaultManager] removeItemAtURL:outputFileURL error:&error];
         }
@@ -501,5 +562,19 @@
 	}
 }
 #endif
+
+#pragma mark - error handling
+- (void)showError:(NSError *)error
+{
+    dispatch_async(dispatch_get_main_queue(), ^{
+        UIAlertView *alertView = [[UIAlertView alloc] initWithTitle:[error localizedDescription]
+                                                            message:[error localizedFailureReason]
+                                                           delegate:nil
+                                                  cancelButtonTitle:@"OK"
+                                                  otherButtonTitles:nil];
+        [alertView show];
+    });
+
+}
 
 @end
