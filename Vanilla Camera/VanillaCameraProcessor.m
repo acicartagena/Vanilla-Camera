@@ -5,9 +5,7 @@
 //  Created by Angela Cartagena on 4/25/14.
 //
 //
-//TODO: 
-// add filters
-// landscape
+
 
 
 #import "VanillaCameraProcessor.h"
