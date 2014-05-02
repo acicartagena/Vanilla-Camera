@@ -6,10 +6,8 @@
 //
 //
 //TODO: (no order)
-// check authorization for camera
-// compile videos (stop/start)
+// check authorization for cameras
 // include front and back camera
-// timer, recording indicator.
 // add filters
 // landscape
 
@@ -356,6 +354,7 @@
 #else
     dispatch_async(self.writerQueue, ^{
         [self assetWriter];
+        [[NSNotificationCenter defaultCenter] postNotificationName:kVanillaCamRecordingStarted object:self];
     });
 #endif
 }
@@ -393,7 +392,9 @@
             self.assetWriter = nil;
             self.assetWriterVideoOutputSetupFinished = NO;
             self.assetWriterAudioOutputSetupFinished = NO;
+            [[NSNotificationCenter defaultCenter] postNotificationName:kVanillaCamRecordingStopped object:self];
         }];
+        [[NSNotificationCenter defaultCenter] postNotificationName:kVanillaCamFileFinished object:self];
     });
 #endif
 }

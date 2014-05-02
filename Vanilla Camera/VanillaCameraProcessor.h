@@ -12,6 +12,10 @@
 #import <AssetsLibrary/AssetsLibrary.h>
 #import <MobileCoreServices/MobileCoreServices.h>
 
+#define kVanillaCamRecordingStarted @"Vanilla Camera Recording Started"
+#define kVanillaCamRecordingStopped @"Vanilla Camera Recording Stopped"
+#define kVanillaCamFileFinished @"Vanilla Camera File Finished"
+
 //OUTPUT MODE
 //#define MOVIE
 #define VIDEODATA
