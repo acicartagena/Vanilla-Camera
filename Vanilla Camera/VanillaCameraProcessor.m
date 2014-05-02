@@ -6,20 +6,15 @@
 //
 //
 //TODO: (no order)
-// include audio
 // check authorization for camera
 // compile videos (stop/start)
 // include front and back camera
-// add capture options (flash, focus, exposure)
-// file system view
-// player
+// timer, recording indicator.
 // add filters
 // landscape
 
 
 #import "VanillaCameraProcessor.h"
-
-
 
 @interface VanillaCameraProcessor ()
 
@@ -33,8 +28,10 @@
 @property (strong, nonatomic) AVCaptureConnection *audioConnection;
 
 @property (strong, nonatomic) AVCaptureMovieFileOutput *movieOutput;
+
 @property (strong, nonatomic) AVAssetWriter *assetWriter;
 @property (strong, nonatomic) AVAssetWriterInput *assetWriterVideoInput;
+@property (strong, nonatomic) AVAssetWriterInput *assetWriterAudioInput;
 
 @property (nonatomic) dispatch_queue_t sessionQueue;
 @property (nonatomic) dispatch_queue_t writerQueue;
@@ -42,6 +39,7 @@
 @property (strong, nonatomic) NSURL *videoURL;
 
 @property (nonatomic, getter = isAssetWriterVideoOutputSetupFinished) BOOL assetWriterVideoOutputSetupFinished;
+@property (nonatomic, getter = isAssetWriterAudioOutputSetupFinished) BOOL assetWriterAudioOutputSetupFinished;
 
 @property (weak, nonatomic) AVCaptureVideoPreviewLayer *previewLayer;
 
@@ -106,7 +104,9 @@
 - (AVCaptureAudioDataOutput *)audioOutput
 {
     if (!_audioOutput){
-        
+        _audioOutput = [[AVCaptureAudioDataOutput alloc] init];
+        dispatch_queue_t audioWriterQueue = dispatch_queue_create("audio writer queue", DISPATCH_QUEUE_SERIAL);
+        [_audioOutput setSampleBufferDelegate:self queue:audioWriterQueue];
     }
     return _audioOutput;
 }
@@ -136,7 +136,6 @@
 #pragma mark - setup
 - (void)setupCamera
 {
-    
     dispatch_async(self.sessionQueue, ^{
         
         //TODO: check device authorization
@@ -170,11 +169,15 @@
 				[self.videoConnection setEnablesVideoStabilizationWhenAvailable:YES];
             }
         }
-#endif
-        //audio output
-
-    });
     
+        //audio output
+        if ([self.session canAddOutput:self.audioOutput]){
+            [self.session addOutput:self.audioOutput];
+            
+            self.audioConnection = [self.audioOutput connectionWithMediaType:AVMediaTypeAudio];
+        }
+#endif
+    });
 }
 
 - (void)setupPreviewWithView:(UIView *)previewView
@@ -247,10 +250,41 @@
         if ([self.assetWriter canAddInput:self.assetWriterVideoInput]){
             [self.assetWriter addInput:self.assetWriterVideoInput];
         }else{
-            NSLog(@"error in adding asset writer input");
+            NSLog(@"error in adding asset writer input video");
         }
     }
     
+}
+
+- (void)setupAssetWriterAudioCompression:(CMFormatDescriptionRef)formatDescription
+{
+    const AudioStreamBasicDescription *asbd = CMAudioFormatDescriptionGetStreamBasicDescription(formatDescription);
+    size_t aclSize = 0;
+    const AudioChannelLayout *currentChannelLayout = CMAudioFormatDescriptionGetChannelLayout(formatDescription, &aclSize);
+    NSData *currentChannelLayoutData = nil;
+    
+    // AVChannelLayoutKey must be specified, but if we don't know any better give an empty data and let AVAssetWriter decide.
+	if ( currentChannelLayout && aclSize > 0 )
+		currentChannelLayoutData = [NSData dataWithBytes:currentChannelLayout length:aclSize];
+	else
+		currentChannelLayoutData = [NSData data];
+    NSDictionary *audioCompressionSettings = @{AVFormatIDKey: @(kAudioFormatMPEG4AAC),
+                                               AVSampleRateKey: @(asbd->mSampleRate),
+                                               AVEncoderBitRatePerChannelKey: @(64000),
+                                               AVNumberOfChannelsKey: @(asbd->mChannelsPerFrame),
+                                               AVChannelLayoutKey: currentChannelLayoutData};
+    
+    if ([self.assetWriter canApplyOutputSettings:audioCompressionSettings forMediaType:AVMediaTypeAudio]){
+        self.assetWriterAudioInput = [[AVAssetWriterInput alloc] initWithMediaType:AVMediaTypeAudio outputSettings:audioCompressionSettings];
+        self.assetWriterAudioInput.expectsMediaDataInRealTime = YES;
+        
+        if ([self.assetWriter canAddInput:self.assetWriterAudioInput]){
+            [self.assetWriter addInput:self.assetWriterAudioInput];
+        }else{
+            NSLog(@"error in adding asset writer input audio");
+        }
+        
+    }
 }
 
 - (CGAffineTransform)transformFromCurrentVideoOrientationToOrientation:(AVCaptureVideoOrientation)orientation
@@ -342,7 +376,7 @@
         if (self.assetWriter.status == AVAssetWriterStatusUnknown || self.assetWriter.status == AVAssetWriterStatusFailed){
             self.assetWriter = nil;
             self.assetWriterVideoOutputSetupFinished = NO;
-            NSLog(@"%s: asset writer status: %i",__PRETTY_FUNCTION__, self.assetWriter.status);
+            NSLog(@"%s: asset writer status: %li",__PRETTY_FUNCTION__, (long)self.assetWriter.status);
         }
         
 //        [self.assetWriter.inputs enumerateObjectsUsingBlock:^(id obj, NSUInteger idx, BOOL *stop) {
@@ -358,6 +392,7 @@
             NSLog(@"FILE SIZE: file size: %@",fileDetails[NSFileSize]);
             self.assetWriter = nil;
             self.assetWriterVideoOutputSetupFinished = NO;
+            self.assetWriterAudioOutputSetupFinished = NO;
         }];
     });
 #endif
@@ -412,20 +447,33 @@
     if (!self.assetWriter || !self.isRecording){
         return;
     }
+    CFRetain(sampleBuffer);
     if ([connection isEqual:self.videoConnection]){
+        
         if (!self.isAssetWriterVideoOutputSetupFinished){
             CMFormatDescriptionRef formatDescription = CMSampleBufferGetFormatDescription(sampleBuffer);
             [self setupAssetWriterVideoCompression:formatDescription];
             self.assetWriterVideoOutputSetupFinished = YES;
         }
-        
-        CFRetain(sampleBuffer);
-        
-        [self writeSampleBuffer:sampleBuffer ofType:AVMediaTypeVideo];
-
-        //don't forget to release buffer!
-        CFRelease(sampleBuffer);
+        //only start writing once BOTH audio and video setup is finished (can't add asset writer inputs, once writing starts
+        if (self.isAssetWriterAudioOutputSetupFinished && self.isAssetWriterVideoOutputSetupFinished){
+            [self writeSampleBuffer:sampleBuffer ofType:AVMediaTypeVideo];
+        }
     }
+    
+    if ([connection isEqual:self.audioConnection]){
+        if (!self.isAssetWriterAudioOutputSetupFinished){
+            CMFormatDescriptionRef formatDescription = CMSampleBufferGetFormatDescription(sampleBuffer);
+            [self setupAssetWriterAudioCompression:formatDescription];
+            self.assetWriterAudioOutputSetupFinished = YES;
+        }
+        
+        if (self.isAssetWriterAudioOutputSetupFinished && self.isAssetWriterVideoOutputSetupFinished){
+            [self writeSampleBuffer:sampleBuffer ofType:AVMediaTypeAudio];
+        }
+    }
+    //don't forget to release buffer!
+    CFRelease(sampleBuffer);
 }
 
 #pragma mark - buffer processing
@@ -434,27 +482,21 @@
 	if ( self.assetWriter.status == AVAssetWriterStatusUnknown ) {
         if ([self.assetWriter startWriting]) {
 			[self.assetWriter startSessionAtSourceTime:CMSampleBufferGetPresentationTimeStamp(sampleBuffer)];
-		}
-		else {
+		}else {
             NSLog(@"error: assetWriter start writing");
 		}
 	}
 	
 	if ( self.assetWriter.status == AVAssetWriterStatusWriting ) {
-		if (mediaType == AVMediaTypeVideo) {
-			if (self.assetWriterVideoInput.readyForMoreMediaData) {
-				if (![self.assetWriterVideoInput appendSampleBuffer:sampleBuffer]) {
-					NSLog(@"error asset writer append sample buffer");
-				}
-			}
-		}
-        //		else if (mediaType == AVMediaTypeAudio) {
-        //			if (assetWriterAudioIn.readyForMoreMediaData) {
-        //				if (![assetWriterAudioIn appendSampleBuffer:sampleBuffer]) {
-        //					[self showError:[assetWriter error]];
-        //				}
-        //			}
-        //		}
+		if (mediaType == AVMediaTypeVideo && self.assetWriterVideoInput.readyForMoreMediaData) {
+            if (![self.assetWriterVideoInput appendSampleBuffer:sampleBuffer]) {
+                NSLog(@"error asset writer append sample buffer video");
+            }
+		}else if (mediaType == AVMediaTypeAudio && self.assetWriterAudioInput.readyForMoreMediaData) {
+            if (![self.assetWriterAudioInput appendSampleBuffer:sampleBuffer]) {
+                NSLog(@"error asset writer append sample buffer audio");
+            }
+        }
 	}
 }
 #endif

@@ -28,7 +28,7 @@
 #ifdef MOVIE
 @interface VanillaCameraProcessor : NSObject<AVCaptureFileOutputRecordingDelegate>
 #else
-@interface VanillaCameraProcessor : NSObject<AVCaptureVideoDataOutputSampleBufferDelegate>
+@interface VanillaCameraProcessor : NSObject<AVCaptureVideoDataOutputSampleBufferDelegate, AVCaptureAudioDataOutputSampleBufferDelegate>
 #endif
 
 @property (strong, nonatomic) AVCaptureSession *session;
