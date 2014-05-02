@@ -16,13 +16,12 @@
 #define kVanillaCamRecordingStopped @"Vanilla Camera Recording Stopped"
 #define kVanillaCamFileFinished @"Vanilla Camera File Finished"
 
-//OUTPUT MODE
+//Session Output Mode: AVCaptureMovieFileOutput or AVCaptureVideoDataOutput&AVCaptureAudioDataOutput
 //#define MOVIE
 #define VIDEODATA
 
 //DEBUG
 //#define LANDSCAPE_IS_WORKING
-#define LANDSCAPE_IS_NOT_WORKING
 
 @protocol VanillaCameraProcessorDelegate <NSObject>
 @optional
@@ -48,7 +47,6 @@
 - (void)startRecording;
 - (void)stopRecording;
 
-//toggle won't work if the camera is currently recording
 - (void)toggleCamera;
 
 #ifdef LANDSCAPE_IS_WORKING

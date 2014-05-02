@@ -5,8 +5,7 @@
 //  Created by Angela Cartagena on 4/25/14.
 //
 //
-//TODO: (no order)
-// include front and back camera
+//TODO: 
 // add filters
 // landscape
 
@@ -18,13 +17,15 @@
 @property (strong, nonatomic) AVCaptureDeviceInput *videoInput;
 @property (strong, nonatomic) AVCaptureDeviceInput *audioInput;
 
+#ifdef MOVIE
+@property (strong, nonatomic) AVCaptureMovieFileOutput *movieOutput;
+#else
 @property (strong, nonatomic) AVCaptureVideoDataOutput *videoOutput;
 @property (strong, nonatomic) AVCaptureAudioDataOutput *audioOutput;
+#endif
 
 @property (strong, nonatomic) AVCaptureConnection *videoConnection;
 @property (strong, nonatomic) AVCaptureConnection *audioConnection;
-
-@property (strong, nonatomic) AVCaptureMovieFileOutput *movieOutput;
 
 @property (strong, nonatomic) AVAssetWriter *assetWriter;
 @property (strong, nonatomic) AVAssetWriterInput *assetWriterVideoInput;
@@ -39,7 +40,7 @@
 @property (nonatomic, getter = isAssetWriterAudioOutputSetupFinished) BOOL assetWriterAudioOutputSetupFinished;
 
 @property (nonatomic, getter = isFrontCameraUsed) BOOL frontCameraUsed;
-@property (nonatomic) BOOL hasMicrophonePermission;
+@property (nonatomic, getter = isMicrophonePermissionGranted) BOOL microphonePermissionGranted;
 
 @property (weak, nonatomic) AVCaptureVideoPreviewLayer *previewLayer;
 
@@ -93,6 +94,15 @@
     return _audioInput;
 }
 
+#ifdef MOVIE
+- (AVCaptureMovieFileOutput *)movieOutput
+{
+    if (!_movieOutput){
+        _movieOutput = [[AVCaptureMovieFileOutput alloc] init];
+    }
+    return _movieOutput;
+}
+#else
 - (AVCaptureVideoDataOutput *)videoOutput
 {
     if (!_videoOutput){
@@ -116,14 +126,7 @@
     }
     return _audioOutput;
 }
-
-- (AVCaptureMovieFileOutput *)movieOutput
-{
-    if (!_movieOutput){
-        _movieOutput = [[AVCaptureMovieFileOutput alloc] init];
-    }
-    return _movieOutput;
-}
+#endif
 
 - (AVAssetWriter *)assetWriter
 {
@@ -154,6 +157,10 @@
         //audio input
         if ([self.session canAddInput:self.audioInput]){
             [self.session addInput:self.audioInput];
+            self.microphonePermissionGranted = YES;
+        }else{
+            self.microphonePermissionGranted = NO;
+            self.assetWriterAudioOutputSetupFinished = YES; //No setup needed for audio.
         }
         
         //video output
@@ -177,7 +184,7 @@
         }
     
         //audio output
-        if ([self.session canAddOutput:self.audioOutput]){
+        if (self.microphonePermissionGranted && [self.session canAddOutput:self.audioOutput]){
             [self.session addOutput:self.audioOutput];
             
             self.audioConnection = [self.audioOutput connectionWithMediaType:AVMediaTypeAudio];
@@ -243,11 +250,6 @@
                                                AVVideoHeightKey:@(dimensions.height),
                                                AVVideoWidthKey:@(dimensions.width),
                                                AVVideoCompressionPropertiesKey:@{AVVideoAverageBitRateKey:@(bitsPerSecond),     AVVideoMaxKeyFrameIntervalKey:@(30)}};
-    //compress later
-//    NSDictionary *videoCompressionSettings = @{AVVideoCodecKey:AVVideoCodecH264,
-//                                               AVVideoHeightKey:@(dimensions.height),
-//                                               AVVideoWidthKey:@(dimensions.width)};
-
     
     if ([self.assetWriter canApplyOutputSettings:videoCompressionSettings forMediaType:AVMediaTypeVideo]){
         self.assetWriterVideoInput = [[AVAssetWriterInput alloc] initWithMediaType:AVMediaTypeVideo outputSettings:videoCompressionSettings];
@@ -259,7 +261,6 @@
             NSLog(@"error in adding asset writer input video");
         }
     }
-    
 }
 
 - (void)setupAssetWriterAudioCompression:(CMFormatDescriptionRef)formatDescription
@@ -332,9 +333,7 @@
 	return angle;
 }
 
-#pragma mark - camera controls
-
-
+#pragma mark - camera control
 - (void)startCameraCapture
 {
     dispatch_async(self.sessionQueue, ^{
@@ -383,13 +382,10 @@
         if (self.assetWriter.status == AVAssetWriterStatusUnknown || self.assetWriter.status == AVAssetWriterStatusFailed){
             self.assetWriter = nil;
             self.assetWriterVideoOutputSetupFinished = NO;
+            self.assetWriterAudioOutputSetupFinished = NO;
             NSLog(@"%s: asset writer status: %li",__PRETTY_FUNCTION__, (long)self.assetWriter.status);
         }
         
-//        [self.assetWriter.inputs enumerateObjectsUsingBlock:^(id obj, NSUInteger idx, BOOL *stop) {
-//            AVAssetWriterInput *input = (AVAssetWriterInput *)obj;
-//            [input markAsFinished];
-//        }];
         [self.assetWriter finishWritingWithCompletionHandler:^{
             [self saveToAssetsLibrary];
             
@@ -413,11 +409,7 @@
 }
 
 - (void)toggleCamera
-{
-//    if (self.isRecording){
-//        return;
-//    }
-    
+{    
     if (self.isFrontCameraUsed){
         self.frontCameraUsed = NO;
         [self switchCameraWithPosition:AVCaptureDevicePositionBack];
@@ -435,14 +427,12 @@
                 NSError *error = nil;
                 [self.session beginConfiguration];
                 
-                //remove current input
+                //remove previous input and switch to current
                 [self.session removeInput:self.videoInput];
                 self.videoInput = device ? [AVCaptureDeviceInput deviceInputWithDevice:device error:&error]:nil;
                 if (error){
                     [self showError:error];
                 }
-                
-                //add desired input
                 if ([self.session canAddInput:self.videoInput]){
                     [self.session addInput:self.videoInput];
                 }
@@ -479,6 +469,7 @@
         self.assetWriter = nil;
     }];
 }
+
 
 #pragma mark - file output delegate (AVCaptureMovieFileOutput)
 #ifdef MOVIE
@@ -562,6 +553,8 @@
 	}
 }
 #endif
+
+
 
 #pragma mark - error handling
 - (void)showError:(NSError *)error
