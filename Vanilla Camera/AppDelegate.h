@@ -6,7 +6,7 @@
 //
 //
 //TODO:
-//add filters (need to update preview)
+//add support for filters (need to update preview)
 //support landscape mode
 //support square captures
 //support start stop recording, 1 file
